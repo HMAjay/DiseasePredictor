@@ -1,3 +1,5 @@
+## File Structure
+```
 disease-prediction-ml/
 ├── data/
 │   ├── raw/             ← Original Kaggle CSV files (never modify)
@@ -22,4 +24,5 @@ disease-prediction-ml/
 │   ├── confusion_matrix.png
 │   ├── model_comparison_chart.png
 │   └── final_report.pdf
-└── README.md            
+└── README 
+```
