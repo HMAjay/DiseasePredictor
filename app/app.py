@@ -1,89 +1,150 @@
 import streamlit as st
-import pandas as pd
 import joblib
-import os
-from utils import predict
+import pandas as pd
+from pathlib import Path
+from utils import predict_and_explain
 
-# ---------------- PATH SETUP ----------------
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-
-model_path = os.path.join(BASE_DIR, "models/model.pkl")
-encoder_path = os.path.join(BASE_DIR, "models/label_encoder.pkl")
-symptoms_path = os.path.join(BASE_DIR, "models/symptoms.pkl")
-
-desc_path = os.path.join(BASE_DIR, "data/raw/symptom_Description.csv")
-prec_path = os.path.join(BASE_DIR, "data/raw/symptom_precaution.csv")
-
-# ---------------- LOAD FILES ----------------
-model = joblib.load(model_path)
-label_encoder = joblib.load(encoder_path)
-symptoms_list = joblib.load(symptoms_path)
-
-desc_df = pd.read_csv(desc_path)
-prec_df = pd.read_csv(prec_path)
-
-# Clean metadata columns
-desc_df.columns = desc_df.columns.str.strip()
-prec_df.columns = prec_df.columns.str.strip()
-
-# ---------------- STREAMLIT UI ----------------
-st.set_page_config(page_title="Disease Predictor", layout="wide")
-
-st.title("🩺 Disease Prediction System")
-st.write("Select symptoms to predict possible diseases")
-
-# ---------------- INPUT ----------------
-selected_symptoms = st.multiselect(
-    "Select Symptoms",
-    sorted(symptoms_list)
+# ✅ MUST BE FIRST
+st.set_page_config(
+    page_title="Disease Predictor",
+    page_icon="🩺",
+    layout="wide"
 )
 
-# ---------------- PREDICTION ----------------
+# ---------------- PATH ----------------
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_DIR = BASE_DIR / "models"
+DATA_DIR = BASE_DIR / "data" / "raw"
+
+# ---------------- LOAD ----------------
+@st.cache_resource
+def load_resources():
+    model = joblib.load(MODEL_DIR / "model.pkl")
+    rf_model = joblib.load(MODEL_DIR / "rf_model.pkl")
+    label_encoder = joblib.load(MODEL_DIR / "label_encoder.pkl")
+    symptoms_list = joblib.load(MODEL_DIR / "symptoms.pkl")
+    scores = joblib.load(MODEL_DIR / "model_scores.pkl")
+    best_model = joblib.load(MODEL_DIR / "best_model.pkl")
+
+    desc_df = pd.read_csv(DATA_DIR / "symptom_Description.csv")
+    prec_df = pd.read_csv(DATA_DIR / "symptom_precaution.csv")
+
+    desc_df.columns = desc_df.columns.str.strip()
+    prec_df.columns = prec_df.columns.str.strip()
+
+    return (
+        model,
+        rf_model,
+        label_encoder,
+        symptoms_list,
+        scores,
+        best_model,
+        desc_df,
+        prec_df,
+    )
+
+(
+    model,
+    rf_model,
+    label_encoder,
+    symptoms_list,
+    scores,
+    best_model,
+    desc_df,
+    prec_df,
+) = load_resources()
+
+# ---------------- STATE ----------------
+if "predicted" not in st.session_state:
+    st.session_state.predicted = False
+    st.session_state.results = None
+    st.session_state.explanation = None
+
+# ---------------- UI ----------------
+st.title("🩺 Explainable Disease Prediction System")
+
+# ---------------- MODEL INFO (HIDDEN) ----------------
+with st.expander("📊 View Model Performance"):
+    for name, score in scores.items():
+        st.write(f"{name}: {score:.4f}")
+
+    st.success(f"🏆 Best Model: {best_model}")
+
+# ---------------- INPUT ----------------
+selected = st.multiselect("Select Symptoms", sorted(symptoms_list))
+
+severity_input = {}
+for s in selected:
+    severity_input[s] = st.slider(f"Severity of {s}", 1, 3, 1)
+
+# ---------------- PREDICT ----------------
 if st.button("Predict"):
 
-    if not selected_symptoms:
-        st.warning("Please select at least one symptom")
+    if not selected:
+        st.warning("⚠️ Please select symptoms")
     else:
-        results = predict(
-            selected_symptoms,
-            symptoms_list,
-            model,
-            label_encoder
-        )
+        with st.spinner("🔍 Predicting..."):
 
-        st.subheader("Top Predictions")
+            results, explanation = predict_and_explain(
+                severity_input,
+                symptoms_list,
+                model,
+                rf_model,
+                label_encoder,
+            )
 
-        for disease, prob in results:
+            # save to session
+            st.session_state.predicted = True
+            st.session_state.results = results
+            st.session_state.explanation = explanation
 
-            st.markdown(f"### {disease}")
-            st.progress(float(prob))
-            st.write(f"Confidence: {prob * 100:.2f}%")
+# ---------------- SHOW RESULTS ONLY AFTER CLICK ----------------
+if st.session_state.predicted:
 
-            # ---------------- DESCRIPTION ----------------
-            try:
-                description = desc_df[
-                    desc_df["Disease"] == disease
-                ]["Description"].values[0]
+    results = st.session_state.results
+    explanation = st.session_state.explanation
 
-                with st.expander("Description"):
-                    st.write(description)
-            except:
-                st.write("No description available")
+    st.subheader("🔍 Predictions")
 
-            # ---------------- PRECAUTIONS ----------------
-            try:
-                precautions = prec_df[
-                    prec_df["Disease"] == disease
-                ].values[0][1:]
+    for disease, prob in results:
+        st.write(f"### {disease}")
+        st.progress(float(prob))
+        st.write(f"{prob * 100:.2f}% confidence")
 
-                with st.expander("Precautions"):
-                    for p in precautions:
-                        if pd.notna(p):
-                            st.write(f"- {p}")
-            except:
-                st.write("No precautions available")
+    # ---------------- EXPLAIN ----------------
+    st.subheader("🧠 Why this prediction?")
 
-            st.markdown("---")
+    if explanation:
+        for s, score in explanation:
+            st.write(f"- {s} → contribution: {score:.3f}")
+    else:
+        st.write("No strong contributing symptoms.")
+
+    # ---------------- DETAILS ----------------
+    top = results[0][0]
+
+    try:
+        desc = desc_df.loc[
+            desc_df["Disease"] == top, "Description"
+        ].values[0]
+
+        st.subheader("📖 Description")
+        st.write(desc)
+    except:
+        st.warning("No description available")
+
+    try:
+        precautions = prec_df.loc[
+            prec_df["Disease"] == top
+        ].values[0][1:]
+
+        st.subheader("💊 Precautions")
+
+        for p in precautions:
+            if pd.notna(p):
+                st.write(f"- {p}")
+    except:
+        st.warning("No precautions available")
 
 # ---------------- FOOTER ----------------
-st.info("This is not a medical diagnosis. Consult a doctor.")
+st.info("⚠️ This is not a medical diagnosis. Consult a professional.")
