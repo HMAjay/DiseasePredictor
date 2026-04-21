@@ -1,7 +1,14 @@
 ## Installation
 - Run the following command to setup project
+### For Linux
 ```bash
-pip install -r requirements.txt
+chmod +x setup.sh
+./setup.sh
+```
+### For Windows
+```bash
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\setup.ps1
 ```
 
 ## File Structure
