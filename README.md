@@ -1,3 +1,9 @@
+## Installation
+- Run the following command to setup project
+```bash
+pip install -r requirements.txt
+```
+
 ## File Structure
 ```
 disease-prediction-ml/
