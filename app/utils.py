@@ -1,4 +1,5 @@
 import pandas as pd
+from rapidfuzz import process, fuzz
 
 def predict_and_explain(symptom_severity, all_symptoms, model, rf_model, label_encoder):
 
@@ -25,3 +26,13 @@ def predict_and_explain(symptom_severity, all_symptoms, model, rf_model, label_e
     explanation = sorted(explanation, key=lambda x: x[1], reverse=True)
 
     return results[:3], explanation[:5]
+
+def get_best_matches(query, all_symptoms, limit=5):
+    """Fuzzy search for symptoms."""
+    matches = process.extract(
+        query, 
+        all_symptoms, 
+        scorer=fuzz.WRatio, 
+        limit=limit
+    )
+    return [match[0] for match in matches if match[1] > 60]
