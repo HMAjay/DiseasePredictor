@@ -15,7 +15,9 @@ from xgboost import XGBClassifier
 # ---------------- PATHS ----------------
 BASE_DIR = Path(__file__).resolve().parent
 
-DATA_PATH = BASE_DIR / "data" / "raw" / "dataset.csv"
+# Prefer cleaned dataset if available
+clean_path = BASE_DIR / "data" / "raw" / "dataset_clean.csv"
+DATA_PATH = clean_path if clean_path.exists() else BASE_DIR / "data" / "raw" / "dataset.csv"
 SEVERITY_PATH = BASE_DIR / "data" / "raw" / "Symptom-severity.csv"
 
 MODEL_DIR = BASE_DIR / "models"

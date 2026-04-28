@@ -44,7 +44,12 @@ lottie_scanning = load_lottieurl("https://assets5.lottiefiles.com/packages/lf20_
 def load_resources():
     try:
         model = joblib.load(MODEL_DIR / "model.pkl")
-        rf_model = joblib.load(MODEL_DIR / "rf_model.pkl")
+        # Prefer calibrated RF probabilities if available
+        calibrated_path = MODEL_DIR / "rf_calibrated.pkl"
+        if calibrated_path.exists():
+            rf_model = joblib.load(calibrated_path)
+        else:
+            rf_model = joblib.load(MODEL_DIR / "rf_model.pkl")
         label_encoder = joblib.load(MODEL_DIR / "label_encoder.pkl")
         symptoms_list = joblib.load(MODEL_DIR / "symptoms.pkl")
         scores = joblib.load(MODEL_DIR / "model_scores.pkl")
@@ -105,9 +110,6 @@ add_vertical_space(2)
 # ---------------- INPUT SECTION ----------------
 st.markdown("### 🔍 Start Your Assessment")
 
-# ---------------- INPUT SECTION ----------------
-st.markdown("### 🔍 Start Your Assessment")
-
 tab1, tab2 = st.tabs(["🎯 Smart Select", "💬 Describe Symptoms"])
 
 with tab1:
@@ -127,14 +129,9 @@ with tab2:
     
     selected_nl = []
     if nl_input:
-        from utils import get_best_matches
-        words = nl_input.lower().replace(",", " ").replace(".", " ").split()
-        for word in words:
-            if len(word) > 3:
-                matches = get_best_matches(word, symptoms_list, limit=1)
-                if matches:
-                    selected_nl.append(matches[0])
-        selected_nl = list(set(selected_nl))
+        from utils import extract_symptoms_from_text
+        detected = extract_symptoms_from_text(nl_input, symptoms_list, min_word_len=3, fuzz_threshold=90)
+        selected_nl = detected
         if selected_nl:
             st.success(f"Detected symptoms: {', '.join([s.replace('_', ' ').title() for s in selected_nl])}")
 
@@ -176,6 +173,11 @@ if predict_btn:
             results, explanation = predict_and_explain(
                 severity_input, symptoms_list, model, rf_model, label_encoder
             )
+            # Post-filter predictions (rule-based)
+            from utils import post_filter_predictions
+            # combine detected NL and selected_select to determine presence
+            detected_symptoms = [s for s in selected] if selected else []
+            results = post_filter_predictions(results, detected_symptoms)
             st.write("Analyzing patterns with Ensemble Models...")
             st.write("Generating explainable insights...")
             
@@ -198,8 +200,8 @@ if st.session_state.get("predicted"):
     for i, (disease, prob) in enumerate(results):
         with res_cols[i]:
             card(
-                disease, 
-                f"Confidence: **{prob*100:.1f}%**",
+                disease,
+                f"Confidence: {prob*100:.1f}%",
                 icon="🩺" if i == 0 else "⚠️"
             )
             st.progress(float(prob))
@@ -267,4 +269,4 @@ st.markdown("""
         Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition.</p>
         <p>&copy; 2026 HealthAI Systems | Built with Premium Precision</p>
     </div>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
