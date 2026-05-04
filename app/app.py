@@ -5,7 +5,6 @@ import requests
 from pathlib import Path
 from streamlit_lottie import st_lottie
 from streamlit_extras.colored_header import colored_header
-from streamlit_extras.add_vertical_space import add_vertical_space
 from style import set_custom_style, card
 from utils import predict_and_explain
 
@@ -138,13 +137,13 @@ with st.sidebar:
     # st_lottie(lottie_health, height=150, key="sidebar_lottie")
 
     
-    add_vertical_space(2)
+    st.space(2)
     st.markdown("### 📊 Engine Performance")
     for name, score in scores.items():
         st.caption(f"{name}")
         st.progress(score)
     
-    add_vertical_space(2)
+    st.space(2)
     st.info("💡 **Tip:** Select at least 3-4 symptoms for better accuracy.")
 
 # ---------------- MAIN UI ----------------
@@ -160,7 +159,7 @@ with col2:
             st_lottie(lottie_health, height=200, key="main_lottie")
 
 
-add_vertical_space(2)
+st.space(2)
 
 # ---------------- INPUT SECTION ----------------
 st.markdown("### 🔍 Start Your Assessment")
@@ -211,7 +210,7 @@ if selected:
                 key=f"sev_{s}_slider"
             )
 
-add_vertical_space(1)
+st.space(1)
 predict_btn = st.button("Analyze Symptoms →")
 
 
@@ -301,7 +300,7 @@ if st.session_state.get("predicted"):
             )
         st.dataframe(model_outputs_df, use_container_width=True, hide_index=True)
 
-    add_vertical_space(2)
+    st.space(2)
     
     # Detailed Info
     detail_col1, detail_col2 = st.columns([1, 1])
@@ -314,7 +313,7 @@ if st.session_state.get("predicted"):
         except:
             st.warning("No detailed description available.")
 
-        add_vertical_space(1)
+        st.space(1)
         st.markdown("### 💊 Recommended Precautions")
         try:
             precautions = prec_df.loc[prec_df["Disease"] == top_disease].values[0][1:]
@@ -342,7 +341,7 @@ if st.session_state.get("predicted"):
             st.info("No single symptom was dominant in this prediction.")
 
     # ---------------- REPORT DOWNLOAD ----------------
-    add_vertical_space(2)
+    st.space(2)
     report_text = f"HealthAI Assessment Report\n{'='*30}\n"
     report_text += f"Primary Condition: {top_disease}\n"
     report_text += f"Confidence: {results[0][1]*100:.2f}%\n\n"
