@@ -261,7 +261,7 @@ if st.session_state.get("predicted"):
     individual_model_outputs = st.session_state.get("individual_model_outputs", [])
     current_severity_input = st.session_state.get("severity_input", {})
     
-    add_vertical_space(2)
+    st.space(2)
     colored_header("🔍 Diagnostic Insights", color_name="blue-70", description="Top 3 likely conditions based on your symptoms")
     
     # Top 3 Results Cards
@@ -275,7 +275,7 @@ if st.session_state.get("predicted"):
             )
             st.progress(float(prob))
 
-    add_vertical_space(2)
+    st.space(2)
     st.markdown("### 🤖 Model Output Details")
     st.markdown(
         f"""
