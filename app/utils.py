@@ -109,6 +109,7 @@ def post_filter_predictions(results, detected_symptoms, dataset_path=None, demot
 
     # Load disease->symptom mapping from cleaned dataset if available
     disease_skin = set()
+    disease_liver = set()
     try:
         from pathlib import Path
         import pandas as pd
