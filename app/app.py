@@ -74,9 +74,64 @@ if resources:
     (model, rf_model, label_encoder, symptoms_list, 
      scores, best_model, desc_df, prec_df) = resources
 
+
+def get_model_display_name(model, best_model):
+    model_type = type(model).__name__
+
+    if model_type == "VotingClassifier":
+        return "Soft Voting Ensemble"
+
+    if isinstance(best_model, str) and best_model:
+        return best_model
+
+    return model_type
+
+
+def get_individual_model_outputs(symptom_severity, all_symptoms, model, label_encoder, final_disease):
+    symptom_severity = {
+        k.lower().strip(): v for k, v in symptom_severity.items()
+    }
+    input_vector = [symptom_severity.get(s, 0) for s in all_symptoms]
+    input_df = pd.DataFrame([input_vector], columns=all_symptoms)
+
+    model_names = {
+        "rf": "RandomForest",
+        "svm": "SVM",
+        "knn": "KNN",
+        "nb": "NaiveBayes",
+        "xgb": "XGBoost",
+    }
+
+    estimators = getattr(model, "estimators_", [model])
+    estimator_names = [
+        model_names.get(name, name)
+        for name, _ in getattr(model, "estimators", [(type(model).__name__, model)])
+    ]
+
+    final_class = label_encoder.transform([final_disease])[0]
+    outputs = []
+
+    for name, estimator in zip(estimator_names, estimators):
+        probabilities = estimator.predict_proba(input_df)[0]
+        classes = list(estimator.classes_)
+        top_index = int(probabilities.argmax())
+        top_class = classes[top_index]
+        predicted_disease = label_encoder.inverse_transform([int(top_class)])[0]
+        final_probability = probabilities[classes.index(final_class)] if final_class in classes else 0.0
+
+        outputs.append({
+            "Model": name,
+            "Model Output": predicted_disease,
+            "Output Probability": float(probabilities[top_index]),
+            f"Probability for {final_disease}": float(final_probability),
+        })
+
+    return outputs
+
+
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
-    st.image(str(BASE_DIR / "app" / "hero.png"), use_column_width=True)
+    st.image(str(BASE_DIR / "app" / "hero.png"), width=True)
     st.markdown("<h1 style='text-align: center; color: #64FFDA;'>HealthAI</h1>", unsafe_allow_html=True)
 
 
@@ -173,6 +228,7 @@ if predict_btn:
             results, explanation = predict_and_explain(
                 severity_input, symptoms_list, model, rf_model, label_encoder
             )
+            raw_model_results = results
             # Post-filter predictions (rule-based)
             from utils import post_filter_predictions
             # combine detected NL and selected_select to determine presence
@@ -180,17 +236,31 @@ if predict_btn:
             results = post_filter_predictions(results, detected_symptoms)
             st.write("Analyzing patterns with Ensemble Models...")
             st.write("Generating explainable insights...")
+            top_disease = results[0][0]
             
             st.session_state.predicted = True
             st.session_state.results = results
+            st.session_state.raw_model_results = raw_model_results
             st.session_state.explanation = explanation
+            st.session_state.severity_input = severity_input
+            st.session_state.model_name = get_model_display_name(model, best_model)
+            st.session_state.individual_model_outputs = get_individual_model_outputs(
+                severity_input, symptoms_list, model, label_encoder, top_disease
+            )
             status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
 
 # ---------------- RESULTS SECTION ----------------
 if st.session_state.get("predicted"):
     results = st.session_state.results
+    raw_model_results = st.session_state.get("raw_model_results", results)
     explanation = st.session_state.explanation
+    model_name = st.session_state.get("model_name", get_model_display_name(model, best_model))
     top_disease = results[0][0]
+    raw_probability_by_disease = dict(raw_model_results)
+    model_probability = raw_probability_by_disease.get(top_disease, results[0][1])
+    model_probability_text = repr(float(model_probability))
+    individual_model_outputs = st.session_state.get("individual_model_outputs", [])
+    current_severity_input = st.session_state.get("severity_input", {})
     
     add_vertical_space(2)
     colored_header("🔍 Diagnostic Insights", color_name="blue-70", description="Top 3 likely conditions based on your symptoms")
@@ -205,6 +275,31 @@ if st.session_state.get("predicted"):
                 icon="🩺" if i == 0 else "⚠️"
             )
             st.progress(float(prob))
+
+    add_vertical_space(2)
+    st.markdown("### 🤖 Model Output Details")
+    st.markdown(
+        f"""
+        <div class='stCard'>
+            <p><b>Ensemble method:</b> {model_name}</p>
+            <p><b>Final predicted disease:</b> {top_disease}</p>
+            <p><b>Ensemble probability:</b> {model_probability_text} ({model_probability * 100:.6f}%)</p>
+            <p><b>Displayed confidence after app filtering:</b> {results[0][1]:.10f} ({results[0][1] * 100:.6f}%)</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    if individual_model_outputs:
+        st.markdown("#### Individual Model Outputs")
+        model_outputs_df = pd.DataFrame(individual_model_outputs)
+        probability_cols = [
+            col for col in model_outputs_df.columns if "Probability" in col
+        ]
+        for col in probability_cols:
+            model_outputs_df[col] = model_outputs_df[col].map(
+                lambda value: f"{value:.10f} ({value * 100:.6f}%)"
+            )
+        st.dataframe(model_outputs_df, use_container_width=True, hide_index=True)
 
     add_vertical_space(2)
     
@@ -252,7 +347,7 @@ if st.session_state.get("predicted"):
     report_text += f"Primary Condition: {top_disease}\n"
     report_text += f"Confidence: {results[0][1]*100:.2f}%\n\n"
     report_text += "Symptoms Analyzed:\n"
-    for s, v in severity_input.items():
+    for s, v in current_severity_input.items():
         report_text += f"- {s}: Severity {v}\n"
     
     st.download_button(
